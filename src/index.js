@@ -26,8 +26,7 @@ const request = requestFactory({
 const VENDOR = 'template'
 const baseUrl = 'https://www.totalenergies.fr'
 
-const courl = baseUrl + "/clients/connexion"
-
+const courl = baseUrl + '/clients/connexion'
 
 module.exports = new BaseKonnector(start)
 
@@ -53,25 +52,23 @@ async function start(fields, cozyParameters) {
   log('info', 'Finished')
 }
 
-
 async function authenticate(username, password) {
   log('debug', 'auth')
   const $ = await signin({
     url: courl,
-    formSelector: "#fz-authentificationForm",
+    formSelector: '#fz-authentificationForm',
     formData: {
-      "tx_demmauth_authentification[authentificationForm][login]": username,
-      "tx_demmauth_authentification[authentificationForm][password]": password
+      'tx_demmauth_authentification[authentificationForm][login]': username,
+      'tx_demmauth_authentification[authentificationForm][password]': password
     },
     resolveWithFullResponse: true
   })
-  .catch(err => {
-    log('err', err)
-  })
-  .then(resp => {
-    return resp
-  })
-
+    .catch(err => {
+      log('err', err)
+    })
+    .then(resp => {
+      return resp
+    })
 }
 
 async function parseBill() {
@@ -167,7 +164,9 @@ async function parseBill() {
           amount,
           date,
           fileurl: `https://www.totalenergies.fr${fileurl}`,
-          filename: `echeancier_${moment(echDate).format('YYYYMMDD')}_TotalEnergies.pdf`,
+          filename: `echeancier_${moment(echDate).format(
+            'YYYYMMDD'
+          )}_TotalEnergies.pdf`,
           vendor: 'Direct Energie',
           fileAttributes: {
             metadata: {
@@ -202,7 +201,6 @@ async function parseBill() {
   return bills
 }
 
-
 const normalizeAmount = amount => {
   if (amount.includes('/')) return false
   return parseFloat(
@@ -212,4 +210,3 @@ const normalizeAmount = amount => {
       .trim()
   )
 }
-
