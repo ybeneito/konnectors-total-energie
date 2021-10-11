@@ -7,10 +7,13 @@ const {
   signin
 } = require('cozy-konnector-libs')
 
+const moment = require('moment')
+const cheerio = require('cheerio')
+
 const request = requestFactory({
   // The debug mode shows all the details about HTTP requests and responses. Very useful for
   // debugging but very verbose. This is why it is commented out by default
-  debug: true,
+  // debug: true,
   // Activates [cheerio](https://cheerio.js.org/) parsing on each page
   cheerio: true,
   // If cheerio is activated do not forget to deactivate json parsing (which is activated by
@@ -25,7 +28,6 @@ const baseUrl = 'https://www.totalenergies.fr'
 
 const courl = baseUrl + "/clients/connexion"
 
-const homeurl = baseUrl + "/clients/accueil"
 
 module.exports = new BaseKonnector(start)
 
@@ -39,8 +41,16 @@ async function start(fields, cozyParameters) {
   if (cozyParameters) log('debug', 'Found COZY_PARAMETERS')
   await authenticate.bind(this)(fields.login, fields.password)
   log('info', 'Successfully logged in')
-  // The BaseKonnector instance expects a Promise as return of the function
+  const bills = await parseBill()
 
+  await this.saveFiles(bills, fields, {
+    fileIdAttributes: ['vendor', 'contractId', 'date', 'amount'],
+    linkBankOperations: false,
+    identifiers: ['free mobile'],
+    sourceAccount: this.accountId,
+    sourceAccountIdentifier: fields.login
+  })
+  log('info', 'Finished')
 }
 
 
@@ -59,9 +69,147 @@ async function authenticate(username, password) {
     log('err', err)
   })
   .then(resp => {
-    log('info', resp.text())
+    return resp
   })
 
 }
 
+async function parseBill() {
+  log('debug', 'Parsing bills')
+  let $
+  try {
+    $ = await request(
+      `https://www.totalenergies.fr/clients/mes-factures/mes-factures-electricite/mon-historique-de-factures`
+    )
+  } catch (err) {
+    log('debug', err.message.substring(0, 60))
+    log('debug', `found no electricite bills on this account`)
+    return []
+  }
+
+  const docs = scrape(
+    $,
+    {
+      label: {
+        sel: '.detail-facture__label strong'
+      },
+      vendorRef: {
+        sel: '.text--body',
+        parse: ref => ref.match(/^N° (.*)$/).pop()
+      },
+      date: {
+        sel: '.detail-facture__date',
+        parse: date => moment(date, 'DD/MM/YYYY').toDate()
+      },
+      status: {
+        sel: '.detail-facture__statut'
+      },
+      amount: {
+        sel: '.detail-facture__montant',
+        parse: normalizeAmount
+      },
+      isEcheancier: {
+        sel: '.detail-facture__action.btn-bas-nivo2',
+        attr: 'class',
+        parse: Boolean
+      },
+      fileurl: {
+        sel: '.btn--telecharger',
+        attr: 'href'
+      },
+      subBills: {
+        sel: 'span:nth-child(1)',
+        fn: el => {
+          const $details = $(el)
+            .closest('.detail-facture')
+            .next()
+
+          if ($details.hasClass('action__display-zone')) {
+            const fileurl = $details.find('.btn--telecharger').attr('href')
+            return Array.from($details.find('tbody tr'))
+              .map(el => {
+                let date = $(el)
+                  .find('td:nth-child(4)')
+                  .text()
+                  .match(/Payée le (.*)/)
+                if (date) date = moment(date.slice(1), 'DD/MM/YYYY').toDate()
+                return {
+                  amount: normalizeAmount(
+                    $(el)
+                      .find('td:nth-child(2)')
+                      .text()
+                  ),
+                  date,
+                  fileurl
+                }
+              })
+              .filter(bill => bill.date)
+          }
+
+          return false
+        }
+      }
+    },
+    '.detail-facture'
+  ).filter(bill => !(bill.amount === false && bill.isEcheancier === false))
+
+  const bills = []
+
+  for (const doc of docs) {
+    if (doc.subBills) {
+      for (const subBill of doc.subBills) {
+        const { vendorRef, label } = doc
+        const echDate = doc.date
+        const { amount, date, fileurl } = subBill
+        bills.push({
+          vendorRef,
+          label,
+          amount,
+          date,
+          fileurl: `https://www.totalenergies.fr${fileurl}`,
+          filename: `echeancier_${moment(echDate).format('YYYYMMDD')}_TotalEnergies.pdf`,
+          vendor: 'Direct Energie',
+          fileAttributes: {
+            metadata: {
+              carbonCopy: true
+            }
+          }
+        })
+      }
+    } else {
+      const { vendorRef, label, date, fileurl, amount, status } = doc
+      const isRefund = status.includes('Remboursée')
+      bills.push({
+        vendorRef,
+        label,
+        amount,
+        date,
+        isRefund,
+        fileurl: `https://www.totalenergies.fr${fileurl}`,
+        filename: `${utils.formatDate(date)}_TotalEnergies_${amount.toFixed(
+          2
+        )}EUR${vendorRef}.pdf`,
+        fileIdAttributes: ['vendorRef'],
+        vendor: 'Direct Energie',
+        fileAttributes: {
+          metadata: {
+            carbonCopy: true
+          }
+        }
+      })
+    }
+  }
+  return bills
+}
+
+
+const normalizeAmount = amount => {
+  if (amount.includes('/')) return false
+  return parseFloat(
+    amount
+      .replace('€', '')
+      .replace(',', '.')
+      .trim()
+  )
+}
 
