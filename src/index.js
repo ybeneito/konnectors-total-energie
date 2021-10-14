@@ -36,24 +36,24 @@ module.exports = new BaseKonnector(start)
 // cozyParameters are static parameters, independents from the account. Most often, it can be a
 // secret api key.
 async function start(fields, cozyParameters) {
-  log('info', 'Authenticating ...')
-  if (cozyParameters) log('debug', 'Found COZY_PARAMETERS')
+  log('info', 'Identification')
+  if (cozyParameters) log('debug', 'Paramètres trouvés')
   await authenticate.bind(this)(fields.login, fields.password)
-  log('info', 'Successfully logged in')
+  log('info', 'Vous êtes connecté')
   const bills = await parseBill()
 
   await this.saveFiles(bills, fields, {
     fileIdAttributes: ['vendor', 'contractId', 'date', 'amount'],
     linkBankOperations: false,
-    identifiers: ['free mobile'],
+    identifiers: ['Total energie'],
     sourceAccount: this.accountId,
     sourceAccountIdentifier: fields.login
   })
-  log('info', 'Finished')
+  log('info', 'Fin de la récupératiob')
 }
 
 async function authenticate(username, password) {
-  log('debug', 'auth')
+  log('debug', 'Authentification en cours')
   const $ = await signin({
     url: courl,
     formSelector: '#fz-authentificationForm',
@@ -72,7 +72,7 @@ async function authenticate(username, password) {
 }
 
 async function parseBill() {
-  log('debug', 'Parsing bills')
+  log('debug', 'Vérification des factures')
   let $
   try {
     $ = await request(
@@ -80,7 +80,7 @@ async function parseBill() {
     )
   } catch (err) {
     log('debug', err.message.substring(0, 60))
-    log('debug', `found no electricite bills on this account`)
+    log('debug', `Pas de facture trouvée pour ce compte`)
     return []
   }
 
@@ -167,7 +167,7 @@ async function parseBill() {
           filename: `echeancier_${moment(echDate).format(
             'YYYYMMDD'
           )}_TotalEnergies.pdf`,
-          vendor: 'Direct Energie',
+          vendor: 'Total Energie',
           fileAttributes: {
             metadata: {
               carbonCopy: true
@@ -189,7 +189,7 @@ async function parseBill() {
           2
         )}EUR${vendorRef}.pdf`,
         fileIdAttributes: ['vendorRef'],
-        vendor: 'Direct Energie',
+        vendor: 'Total Energie',
         fileAttributes: {
           metadata: {
             carbonCopy: true
