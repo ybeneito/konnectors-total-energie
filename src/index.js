@@ -42,7 +42,7 @@ async function start(fields, cozyParameters) {
   log('info', 'Vous êtes connecté')
   const bills = await parseBill()
 
-  await this.saveFiles(bills, fields, {
+  await this.saveBills(bills, fields, {
     fileIdAttributes: ['vendor', 'contractId', 'date', 'amount'],
     linkBankOperations: false,
     identifiers: ['Total energie'],
@@ -207,6 +207,7 @@ const normalizeAmount = amount => {
     amount
       .replace('€', '')
       .replace(',', '.')
+      .replace(' ', '')
       .trim()
   )
 }
